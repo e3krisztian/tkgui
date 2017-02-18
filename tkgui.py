@@ -3,12 +3,17 @@ from __future__ import unicode_literals, print_function
 try:
     try:
         # python3
+        # https://docs.python.org/3.6/library/tkinter.html
         import tkinter as tk
         from tkinter import ttk
+        from tkinter.simpledialog import Dialog  # it also has a new SimpleDialog
     except ImportError:
         # python2
         import Tkinter as tk
         import ttk
+        # http://effbot.org/tkinterbook/tkinter-dialog-windows.htm
+        # http://epydoc.sourceforge.net/stdlib/tkSimpleDialog.Dialog-class.html
+        from tkSimpleDialog import Dialog
 
     has_gui = bool(tk and ttk)
     assert has_gui
@@ -129,6 +134,7 @@ assert g.get_rowspan(0, 1) == 1  # x
 assert g.get_rowspan(1, 0) == 1  # b
 assert g.get_rowspan(2, 0) == 2  # c
 
+# this is an invalid tk grid: the cells of x and y overlap
 g = HGrid(
     '''\
     a | b | c
@@ -151,34 +157,42 @@ g = HGrid(
 
 from random import randint
 def randbyte():
+    return randint(60, 240)
     return randint(0, 255)
 
 def color(col, row):
     r, g, b = randbyte(), randbyte(), randbyte()
     return '#%02x%02x%02x' % (r, g, b)
 
-root = Frame()
-root.grid(sticky=tk.NSEW)
+root = tk.Tk()
+# using Frame as root fails to expand its content if window is resized
+# root = Frame(height=1000, width=800)
+# root.grid(sticky=tk.NSEW)
 
 # overlapping grids do not work:
 # tk.Button(root, bg=color(0,0), text='1g.get_text(col, row)', anchor='s').grid(column=0, row=0, columnspan=2, rowspan=2, sticky='NWES')
 # tk.Button(root, bg=color(1,1), text='2g.get_text(col, row)', anchor='s').grid(column=1, row=1, columnspan=2, rowspan=2, sticky='NWES')
 # root.mainloop()
 
+print(Dialog)
 grid = None
 for row in range(g.nrows):
     for col in range(g.ncols):
         if g.is_cell(col, row):
             # Label(root, background=color(col, row), text=g.get_text(col, row)).grid(column=col, row=row, columnspan=g.get_colspan(col, row), rowspan=g.get_rowspan(col, row), sticky='NWES')
-            w = tk.Button(root, bg=color(col, row), text=g.get_text(col, row), anchor='s')
+            w = tk.Button(root, bg=color(col, row), text=g.get_text(col, row), anchor='se')
             w.grid(column=col, row=row, columnspan=g.get_colspan(col, row), rowspan=g.get_rowspan(col, row), sticky='NWES')
+            # w.rowconfigure(row, weight=1)
+            # w.columnconfigure(col, weight=1)
             grid = w
             print(col, row)
             for f in (g.get_text, g.get_colspan, g.get_rowspan):
                 print(f.__name__, f(col, row))
 
 for row in range(g.nrows):
-    root.rowconfigure(row, weight=1, minsize=100)
+    root.rowconfigure(row, weight=row, minsize=100)
+    # grid.rowconfigure(row, weight=1)
 for col in range(g.ncols):
-    root.columnconfigure(col, weight=1, minsize=100)
+    root.columnconfigure(col, weight=col, minsize=200)
+    # grid.columnconfigure(col, weight=1)
 root.mainloop()
