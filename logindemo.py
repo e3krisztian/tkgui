@@ -32,7 +32,7 @@ blueprint = gui.Blueprint('''\
 
 root = gui.tk.Tk()
 widgets = LoginWidgets()
-blueprint.build(root, widgets)
+widgets.build(root, blueprint)
 root.mainloop()
 
 print('username', widgets.var_username.get())

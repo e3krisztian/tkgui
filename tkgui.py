@@ -98,22 +98,6 @@ class Blueprint:
             return 0
         return 1 + span_from(row + 1)
 
-    def build(self, root, widgets):
-        '''
-            Construct widgets and assemble/configure them according to the blueprint
-        '''
-        for row in range(self.nrows):
-            for col in range(self.ncols):
-                if self.is_cell(col, row):
-                    name = self.get_text(col, row)
-                    w = widgets.makewidget(root, name)
-                    w.grid(column=col, row=row, columnspan=self.get_colspan(col, row), rowspan=self.get_rowspan(col, row))
-                    widgets.configure(w, name)
-        for row in range(self.nrows):
-            root.rowconfigure(row, weight=1)
-        for col in range(self.ncols):
-            root.columnconfigure(col, weight=1)
-
 
 g = Blueprint(
     '''\
@@ -205,3 +189,19 @@ class Widgets:
         if configure is not None:
             grid_conf.update(configure(widget, widget_name))
         widget.grid(**grid_conf)
+
+    def build(self, root, blueprint):
+        '''
+            Construct widgets and assemble/configure them according to the blueprint
+        '''
+        for row in range(blueprint.nrows):
+            for col in range(blueprint.ncols):
+                if blueprint.is_cell(col, row):
+                    name = blueprint.get_text(col, row)
+                    w = self.makewidget(root, name)
+                    w.grid(column=col, row=row, columnspan=blueprint.get_colspan(col, row), rowspan=blueprint.get_rowspan(col, row))
+                    self.configure(w, name)
+        for row in range(blueprint.nrows):
+            root.rowconfigure(row, weight=1)
+        for col in range(blueprint.ncols):
+            root.columnconfigure(col, weight=1)
