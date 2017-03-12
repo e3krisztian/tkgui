@@ -112,7 +112,7 @@ assert g.is_cell(1, 0)  # b
 assert g.is_cell(0, 1)  # x
 assert not g.is_cell(1, 1)  # continuation - horizontal
 assert not g.is_cell(2, 1)  # continuation - vertical
-assert not g.is_cell(0, 2)  #  empty
+assert not g.is_cell(0, 2)  # empty
 assert g.is_cell(1, 2)  # y
 assert g.is_cell(0, 3)  # z
 try:
@@ -149,8 +149,29 @@ assert g.get_rowspan(2, 0) == 2  # c
 assert g.get_rowspan(0, 1) == 2  # x
 
 
-class Widgets:
+class attrdict(dict):
+    __getattr__ = dict.__getitem__
+    __setattr__ = dict.__setitem__
 
+
+Variables = attrdict
+Widgets = attrdict
+
+
+class View:
+    def __init__(self, root, widgets, variables):
+        self.root = root
+        self.widgets = widgets
+        self.variables = variables
+
+    def add_var(self, name, tkvariable):
+        self.variables[name] = tkvariable
+
+    def add_widget(self, name, tkwidget):
+        self.widgets[name] = tkwidget
+
+
+class ViewBuilder:
     '''
         Base class for constructing and storing widgets
 
@@ -158,27 +179,39 @@ class Widgets:
         During construction widgets are stored as attributes, for accessing/modifying their values
     '''
 
+    DEFVAR_PREFIX = 'defvar_'
     CONSTRUCT_PREFIX = 'make_'
     CONFIG_PREFIX = 'conf_'
     LABEL_PREFIX = '\''
 
-    def makewidget(self, parent, widget_name):
+    def defvars(self, name, view):
+        '''
+            Create variable[s] for name [optional]
+        '''
+        def noop(name, view):
+            pass
+        defvars = getattr(self, self.DEFVAR_PREFIX + name, noop)
+        defvars(name, view)
+
+    def makewidget(self, name_or_label, view):
         '''
             Construct a widget by name
         '''
-        if widget_name.startswith(self.LABEL_PREFIX):
-            return self.makelabel(parent, widget_name[len(self.LABEL_PREFIX):])
+        if name_or_label.startswith(self.LABEL_PREFIX):
+            return self.makelabel(name_or_label, view)
 
-        construct = getattr(self, self.CONSTRUCT_PREFIX + widget_name, None)
+        construct = getattr(self, self.CONSTRUCT_PREFIX + name_or_label, None)
         if construct is None:
-            return self.makelabel(parent, widget_name)
+            return self.makelabel(name_or_label, view)
 
-        widget = construct(parent, widget_name)
-        setattr(self, widget_name, widget)
+        widget = construct(name_or_label, view)
+        view.add_widget(name_or_label, widget)
         return widget
 
-    def makelabel(self, parent, text):
-        return Label(text=text)
+    def makelabel(self, text, view):
+        if text.startswith(self.LABEL_PREFIX):
+            text = text[len(self.LABEL_PREFIX):]
+        return Label(view.root, text=text)
 
     def configure(self, widget, widget_name):
         '''
@@ -194,14 +227,17 @@ class Widgets:
         '''
             Construct widgets and assemble/configure them according to the blueprint
         '''
+        view = View(root, Widgets(), Variables())
         for row in range(blueprint.nrows):
             for col in range(blueprint.ncols):
                 if blueprint.is_cell(col, row):
                     name = blueprint.get_text(col, row)
-                    w = self.makewidget(root, name)
+                    self.defvars(name, view)
+                    w = self.makewidget(name, view)
                     w.grid(column=col, row=row, columnspan=blueprint.get_colspan(col, row), rowspan=blueprint.get_rowspan(col, row))
                     self.configure(w, name)
         for row in range(blueprint.nrows):
             root.rowconfigure(row, weight=1)
         for col in range(blueprint.ncols):
             root.columnconfigure(col, weight=1)
+        return view
