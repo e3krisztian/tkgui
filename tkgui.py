@@ -149,26 +149,26 @@ assert g.get_rowspan(2, 0) == 2  # c
 assert g.get_rowspan(0, 1) == 2  # x
 
 
-class attrdict(dict):
-    __getattr__ = dict.__getitem__
-    __setattr__ = dict.__setitem__
+class Attributes:
+    '''
+        Convenience: name -> value map.
 
-
-Variables = attrdict
-Widgets = attrdict
+        (object by itself does not work - can not set new attribute)
+    '''
+    pass
 
 
 class View:
-    def __init__(self, root, widgets, variables):
+    def __init__(self, root):
         self.root = root
-        self.widgets = widgets
-        self.variables = variables
+        self.widgets = Attributes()
+        self.variables = Attributes()
 
     def add_var(self, name, tkvariable):
-        self.variables[name] = tkvariable
+        setattr(self.variables, name, tkvariable)
 
     def add_widget(self, name, tkwidget):
-        self.widgets[name] = tkwidget
+        setattr(self.widgets, name, tkwidget)
 
 
 class ViewBuilder:
@@ -179,41 +179,56 @@ class ViewBuilder:
         During construction widgets are stored as attributes, for accessing/modifying their values
     '''
 
-    DEFVAR_PREFIX = 'defvar_'
-    CONSTRUCT_PREFIX = 'make_'
-    CONFIG_PREFIX = 'conf_'
+    DEFVAR_PREFIX = 'variable_'
+    MAKE_WIDGET_PREFIX = 'widget_'
+    MAKE_SUBFRAME_PREFIX = 'frame_'
+    BLUEPRINT_PREFIX = 'blueprint_'
+    CONFIG_PREFIX = 'widgetconfig_'
     LABEL_PREFIX = '\''
 
-    def defvars(self, name, view):
+    def define_variables(self, name, view):
         '''
             Create variable[s] for name [optional]
         '''
         def noop(name, view):
             pass
-        defvars = getattr(self, self.DEFVAR_PREFIX + name, noop)
-        defvars(name, view)
+        define_variables = getattr(self, self.DEFVAR_PREFIX + name, noop)
+        define_variables(name, view)
 
-    def makewidget(self, name_or_label, view):
+    def make_widget(self, parent, name_or_label, view):
         '''
             Construct a widget by name
         '''
         if name_or_label.startswith(self.LABEL_PREFIX):
-            return self.makelabel(name_or_label, view)
+            return self.make_label(parent, name_or_label, view)
 
-        construct = getattr(self, self.CONSTRUCT_PREFIX + name_or_label, None)
+        construct = getattr(self, self.MAKE_WIDGET_PREFIX + name_or_label, None)
         if construct is None:
-            return self.makelabel(name_or_label, view)
+            # subframe?
+            construct = getattr(self, self.MAKE_SUBFRAME_PREFIX + name_or_label, None)
+        if construct is None:
+            # subframe via blueprint?
+            blueprint = getattr(self, self.BLUEPRINT_PREFIX + name_or_label, None)
+            if blueprint:
+                if not isinstance(blueprint, Blueprint):
+                    blueprint = Blueprint(blueprint)
+                def construct(parent, name, view):
+                    return self.add_subframe(parent, name, view, blueprint)
+        if construct is None:
+            # fallback: label
+            return self.make_label(parent, name_or_label, view)
 
-        widget = construct(name_or_label, view)
+        widget = construct(parent, name_or_label, view)
+        # NOTE: labels are not stored (they are generally not valid Python identifiers)
         view.add_widget(name_or_label, widget)
         return widget
 
-    def makelabel(self, text, view):
+    def make_label(self, parent, text, view):
         if text.startswith(self.LABEL_PREFIX):
             text = text[len(self.LABEL_PREFIX):]
-        return Label(view.root, text=text)
+        return Label(parent, text=text)
 
-    def configure(self, widget, widget_name):
+    def configure_widget(self, widget, widget_name):
         '''
             Configure padding and stickyness of the widget
         '''
@@ -227,17 +242,34 @@ class ViewBuilder:
         '''
             Construct widgets and assemble/configure them according to the blueprint
         '''
-        view = View(root, Widgets(), Variables())
+        view = View(root)
+        self.add_widgets(root, view, blueprint)
+        self.configure(root, blueprint)
+        return view
+
+    def add_widgets(self, parent, view, blueprint):
         for row in range(blueprint.nrows):
             for col in range(blueprint.ncols):
                 if blueprint.is_cell(col, row):
                     name = blueprint.get_text(col, row)
-                    self.defvars(name, view)
-                    w = self.makewidget(name, view)
+                    self.define_variables(name, view)
+                    w = self.make_widget(parent, name, view)
                     w.grid(column=col, row=row, columnspan=blueprint.get_colspan(col, row), rowspan=blueprint.get_rowspan(col, row))
-                    self.configure(w, name)
+                    self.configure_widget(w, name)
+
+    def configure(self, root, blueprint):
         for row in range(blueprint.nrows):
             root.rowconfigure(row, weight=1)
         for col in range(blueprint.ncols):
             root.columnconfigure(col, weight=1)
-        return view
+
+    def add_subframe(self, parent, name, view, blueprint):
+        '''
+            Build a sub-frame in view with an independent layout
+        '''
+
+        frame = ttk.Frame(view.root)
+        view.add_widget(name, frame)
+        self.add_widgets(frame, view, blueprint)
+        self.configure(frame, blueprint)
+        return frame

@@ -6,37 +6,48 @@ import tkgui as gui
 class LoginBuilder(gui.ViewBuilder):
 
     # variables for widgets
-    def def_string_var(self, name, view):
+    def def_string_variable(self, name, view):
         view.add_var(name, gui.tk.StringVar())
 
-    defvar_username = def_string_var
-    defvar_password = def_string_var
+    variable_username = def_string_variable
+    variable_password = def_string_variable
 
     # widget constructors
-    def make_username(self, name, view):
+    def widget_username(self, parent, name, view):
         view.variables.username.set(name)
-        return gui.ttk.Entry(view.root, textvariable=view.variables.username)
+        return gui.ttk.Entry(parent, textvariable=view.variables.username)
 
-    def make_password(self, name, view):
+    def widget_password(self, parent, name, view):
         view.variables.password.set(name)
-        return gui.ttk.Entry(view.root, textvariable=view.variables.password, show='*')
+        return gui.ttk.Entry(parent, textvariable=view.variables.password, show='*')
 
-    def make_quit(self, name, view):
-        return gui.Button(view.root, text='Quit', command=view.root.quit, underline=0)
+    def widget_quit(self, parent, name, view):
+        return gui.Button(parent, text='Quit', command=view.root.quit, underline=0)
 
     # widget configurators for minor changes - padding and stickyness
-    def conf_quit(self, widget, name):
-        return dict(sticky=gui.tk.E)
+    def widgetconfig_quit(self, widget, name):
+        # return dict()
+        return dict(sticky=gui.tk.W)
 
+    def widgetconfig_login(self, widget, name):
+        widget.config(borderwidth=1, relief=gui.tk.RIDGE)
+        return dict()
 
-blueprint = gui.Blueprint('''\
-    Username: | username
-    Password: | password
-    quit
+    blueprint_login = '''\
+        Username: | username
+        Password: | password
+        '''
+
+    blueprint_exit = '''\
+        Exit: | quit
+        '''
+
+app_blueprint = gui.Blueprint('''\
+    Login/exit demo | login | exit
     ''')
 
 root = gui.tk.Tk()
-view = LoginBuilder().build(root, blueprint)
+view = LoginBuilder().build(root, app_blueprint)
 view.root.mainloop()
 
 print('username:', view.variables.username.get())
