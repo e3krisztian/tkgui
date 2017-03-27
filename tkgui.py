@@ -180,53 +180,88 @@ class ViewBuilder:
     '''
 
     DEFVAR_PREFIX = 'variable_'
-    MAKE_WIDGET_PREFIX = 'widget_'
-    MAKE_SUBFRAME_PREFIX = 'frame_'
-    BLUEPRINT_PREFIX = 'blueprint_'
     CONFIG_PREFIX = 'widgetconfig_'
     LABEL_PREFIX = '\''
+    CONSTRUCT_PREFIX = 'make_'
+    CONSTRUCTS = ('widget', 'blueprint', 'scrollable')  # used in method names `make_CONSTRUCT` and user's `CONSTRUCT_name`
 
-    def define_variables(self, name, view):
+    def build(self, root, blueprint):
         '''
-            Create variable[s] for name [optional]
-        '''
-        def noop(name, view):
-            pass
-        define_variables = getattr(self, self.DEFVAR_PREFIX + name, noop)
-        define_variables(name, view)
+            Construct widgets and assemble/configure them according to the blueprint
 
-    def make_widget(self, parent, name_or_label, view):
+            Users need to call only this method.
+        '''
+        view = View(root)
+        self.add_widgets(root, view, blueprint)
+        # self.configure(root, blueprint)
+        return view
+
+    # Widget constructors - called dynamically from define_widget
+
+    def make_widget(self, parent, name, view, construct):
         '''
             Construct a widget by name
         '''
-        if name_or_label.startswith(self.LABEL_PREFIX):
-            return self.make_label(parent, name_or_label, view)
-
-        construct = getattr(self, self.MAKE_WIDGET_PREFIX + name_or_label, None)
-        if construct is None:
-            # subframe?
-            construct = getattr(self, self.MAKE_SUBFRAME_PREFIX + name_or_label, None)
-        if construct is None:
-            # subframe via blueprint?
-            blueprint = getattr(self, self.BLUEPRINT_PREFIX + name_or_label, None)
-            if blueprint:
-                if not isinstance(blueprint, Blueprint):
-                    blueprint = Blueprint(blueprint)
-                def construct(parent, name, view):
-                    return self.add_subframe(parent, name, view, blueprint)
-        if construct is None:
-            # fallback: label
-            return self.make_label(parent, name_or_label, view)
-
-        widget = construct(parent, name_or_label, view)
-        # NOTE: labels are not stored (they are generally not valid Python identifiers)
-        view.add_widget(name_or_label, widget)
+        widget = construct(parent, name, view)
+        view.add_widget(name, widget)
         return widget
+
+    def make_scrollable(self, parent, name, view, construct):
+        '''
+            Construct a widget by name and a vertical scrollbar
+        '''
+        frame = ttk.Frame(parent)
+        widget = construct(frame, name, view)
+        widget.grid(row=0, column=0, sticky=tk.N+tk.S+tk.E+tk.W)
+        # vertical scrollbar
+        yscroll = tk.Scrollbar(frame, orient=tk.VERTICAL, command=widget.yview)
+        yscroll.grid(row=0, column=1, sticky=tk.N+tk.S)
+        widget.configure(yscrollcommand=yscroll.set)
+
+        view.add_widget(name, widget)
+        return frame
 
     def make_label(self, parent, text, view):
         if text.startswith(self.LABEL_PREFIX):
             text = text[len(self.LABEL_PREFIX):]
         return Label(parent, text=text)
+
+    def make_blueprint(self, parent, name, view, blueprint):
+        '''
+            Build a sub-frame in view with an independent layout
+        '''
+        if not isinstance(blueprint, Blueprint):
+            blueprint = Blueprint(blueprint)
+
+        frame = ttk.Frame(view.root)
+        view.add_widget(name, frame)
+        self.add_widgets(frame, view, blueprint)
+        # self.configure(frame, blueprint)
+        return frame
+
+    def add_widgets(self, parent, view, blueprint):
+        for row in range(blueprint.nrows):
+            for col in range(blueprint.ncols):
+                if blueprint.is_cell(col, row):
+                    self.define_widget(parent, view, blueprint, col, row)
+
+    def define_widget(self, parent, view, blueprint, col, row):
+        name = blueprint.get_text(col, row)
+        self.define_variables(name, view)
+        if name.startswith(self.LABEL_PREFIX):
+            widget = self.make_label(parent, name, view)
+        else:
+            for construct in self.CONSTRUCTS:
+                make = getattr(self, construct + '_' + name, None)
+                if make is not None:
+                    constructor = getattr(self, self.CONSTRUCT_PREFIX + construct)
+                    widget = constructor(parent, name, view, make)
+                    break
+            else:
+                # XXX: not matched - is it a label?
+                widget = self.make_label(parent, name, view)
+        widget.grid(column=col, row=row, columnspan=blueprint.get_colspan(col, row), rowspan=blueprint.get_rowspan(col, row))
+        self.configure_widget(widget, name)
 
     def configure_widget(self, widget, widget_name):
         '''
@@ -238,38 +273,19 @@ class ViewBuilder:
             grid_conf.update(configure(widget, widget_name))
         widget.grid(**grid_conf)
 
-    def build(self, root, blueprint):
+    def define_variables(self, name, view):
         '''
-            Construct widgets and assemble/configure them according to the blueprint
+            Create variable[s] for name [optional]
         '''
-        view = View(root)
-        self.add_widgets(root, view, blueprint)
-        self.configure(root, blueprint)
-        return view
+        def noop(name, view):
+            pass
+        define_variables = getattr(self, self.DEFVAR_PREFIX + name, noop)
+        define_variables(name, view)
 
-    def add_widgets(self, parent, view, blueprint):
-        for row in range(blueprint.nrows):
-            for col in range(blueprint.ncols):
-                if blueprint.is_cell(col, row):
-                    name = blueprint.get_text(col, row)
-                    self.define_variables(name, view)
-                    w = self.make_widget(parent, name, view)
-                    w.grid(column=col, row=row, columnspan=blueprint.get_colspan(col, row), rowspan=blueprint.get_rowspan(col, row))
-                    self.configure_widget(w, name)
-
-    def configure(self, root, blueprint):
-        for row in range(blueprint.nrows):
-            root.rowconfigure(row, weight=1)
-        for col in range(blueprint.ncols):
-            root.columnconfigure(col, weight=1)
-
-    def add_subframe(self, parent, name, view, blueprint):
-        '''
-            Build a sub-frame in view with an independent layout
-        '''
-
-        frame = ttk.Frame(view.root)
-        view.add_widget(name, frame)
-        self.add_widgets(frame, view, blueprint)
-        self.configure(frame, blueprint)
-        return frame
+    # def configure(self, root, blueprint):
+    #     # XXX: is it a good idea?
+    #     # make every grid item resizable
+    #     for row in range(blueprint.nrows):
+    #         root.rowconfigure(row, weight=1)
+    #     for col in range(blueprint.ncols):
+    #         root.columnconfigure(col, weight=1)
